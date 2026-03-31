@@ -17,6 +17,21 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+// Representa una fila en el listado: un reto en un horario concreto.
+class _ChallengeSlot {
+  final Challenge challenge;
+  final String time;        // "HH:MM"
+  final String progressKey; // challenge.id  o  challenge.id:HH:MM
+  final bool isRecurring;
+
+  const _ChallengeSlot({
+    required this.challenge,
+    required this.time,
+    required this.progressKey,
+    required this.isRecurring,
+  });
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   final _storage = StorageService();
   final _notifications = NotificationService();
@@ -49,16 +64,46 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _complete(Challenge challenge) async {
-    final entry = _todayProgress[challenge.id] ?? ProgressEntry(completed: false, postponedCount: 0);
+  // Genera la lista plana de slots ordenada por hora.
+  List<_ChallengeSlot> get _slots {
+    final slots = <_ChallengeSlot>[];
+    for (final c in _challenges) {
+      if (c.intervalHours <= 0) {
+        slots.add(_ChallengeSlot(
+          challenge: c,
+          time: c.reminderTime,
+          progressKey: c.id,
+          isRecurring: false,
+        ));
+      } else {
+        final parts = c.reminderTime.split(':');
+        int hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        while (hour < 24) {
+          final t = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+          slots.add(_ChallengeSlot(
+            challenge: c,
+            time: t,
+            progressKey: '${c.id}:$t',
+            isRecurring: true,
+          ));
+          hour += c.intervalHours;
+        }
+      }
+    }
+    slots.sort((a, b) => a.time.compareTo(b.time));
+    return slots;
+  }
+
+  Future<void> _complete(Challenge challenge, String progressKey) async {
+    final entry = _todayProgress[progressKey] ?? ProgressEntry(completed: false, postponedCount: 0);
     if (entry.completed) return;
 
     entry.completed = true;
     entry.completedAt = AppDateUtils.currentTime();
-    await _storage.saveEntryForToday(challenge.id, entry);
+    await _storage.saveEntryForToday(progressKey, entry);
 
-    final activeChallenges = _challenges;
-    await _storage.recalculateStreak(activeChallenges);
+    await _storage.recalculateStreak(_challenges);
     final newStreak = await _storage.getStreak();
 
     final category = challenge.title.toLowerCase().contains('agua')
@@ -67,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final msg = getRandomMessage(category);
 
     setState(() {
-      _todayProgress[challenge.id] = entry;
+      _todayProgress[progressKey] = entry;
       _allProgress[AppDateUtils.todayKey()] = Map.from(_todayProgress);
       _streak = newStreak;
     });
@@ -77,18 +122,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _postpone(Challenge challenge) async {
-    final entry = _todayProgress[challenge.id] ?? ProgressEntry(completed: false, postponedCount: 0);
+  Future<void> _postpone(Challenge challenge, String progressKey) async {
+    final entry = _todayProgress[progressKey] ?? ProgressEntry(completed: false, postponedCount: 0);
     if (entry.completed) return;
 
     entry.postponedCount++;
-    await _storage.saveEntryForToday(challenge.id, entry);
+    await _storage.saveEntryForToday(progressKey, entry);
     await _notifications.schedulePostponeNotification(challenge);
 
     final msg = getPostponeMessage(entry.postponedCount);
 
     setState(() {
-      _todayProgress[challenge.id] = entry;
+      _todayProgress[progressKey] = entry;
     });
 
     if (mounted) {
@@ -96,21 +141,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ── Métricas ─────────────────────────────────────────────────────────────
+
   bool get _allCompleted {
-    if (_challenges.isEmpty) return false;
-    return _challenges.every((c) => _todayProgress[c.id]?.completed == true);
+    final s = _slots;
+    if (s.isEmpty) return false;
+    return s.every((sl) => _todayProgress[sl.progressKey]?.completed == true);
   }
 
-  double get _completionRatio {
-    if (_challenges.isEmpty) return 0;
-    final done = _challenges.where((c) => _todayProgress[c.id]?.completed == true).length;
-    return done / _challenges.length;
-  }
+  int get _totalSlots => _slots.length;
+  int get _completedSlots =>
+      _slots.where((sl) => _todayProgress[sl.progressKey]?.completed == true).length;
 
-  int get _todayCompleted =>
-      _challenges.where((c) => _todayProgress[c.id]?.completed == true).length;
+  double get _completionRatio =>
+      _totalSlots == 0 ? 0 : _completedSlots / _totalSlots;
 
-  // Returns bool? per weekday: true=all done, false=partial/none, null=no data/future
+  // ── Semana ────────────────────────────────────────────────────────────────
+
   List<bool?> get _weekDayStatuses {
     final now = DateTime.now();
     final monday = now.subtract(Duration(days: now.weekday - 1));
@@ -120,7 +167,21 @@ class _HomeScreenState extends State<HomeScreen> {
       final key = AppDateUtils.dateKey(day);
       final dayProgress = _allProgress[key];
       if (dayProgress == null || _challenges.isEmpty) return null;
-      final allDone = _challenges.every((c) => dayProgress[c.id]?.completed == true);
+      final allDone = _challenges.every((c) {
+        if (c.intervalHours <= 0) {
+          return dayProgress[c.id]?.completed == true;
+        }
+        // Para recurrentes: al menos un slot completado ese día
+        final parts = c.reminderTime.split(':');
+        int hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        while (hour < 24) {
+          final t = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+          if (dayProgress['${c.id}:$t']?.completed == true) return true;
+          hour += c.intervalHours;
+        }
+        return false;
+      });
       return allDone;
     });
   }
@@ -128,10 +189,9 @@ class _HomeScreenState extends State<HomeScreen> {
   int get _weekCompletedDays =>
       _weekDayStatuses.where((s) => s == true).length;
 
-  int get _weekDaysSoFar {
-    final now = DateTime.now();
-    return now.weekday; // 1=Mon .. 7=Sun
-  }
+  int get _weekDaysSoFar => DateTime.now().weekday;
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     final todayStr = '${now.day} de ${months[now.month - 1]}';
+    final slots = _slots;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F0F),
@@ -161,10 +222,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  todayStr,
-                                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                                ),
+                                Text(todayStr,
+                                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                                 if (_streak > 0)
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -172,10 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       color: Colors.orange[900],
                                       borderRadius: BorderRadius.circular(20),
                                     ),
-                                    child: Text(
-                                      '🔥 $_streak días',
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                    ),
+                                    child: Text('🔥 $_streak días',
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                   ),
                               ],
                             ),
@@ -202,16 +259,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Text('✅', style: TextStyle(fontSize: 24)),
                             SizedBox(width: 8),
-                            Text(
-                              '¡Todo listo por hoy!',
-                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
+                            Text('¡Todo listo por hoy!',
+                                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
                     ),
 
-                  // ── Sección Semana ──────────────────────────────
+                  // ── Sección Semana ────────────────────────────────────
                   if (_challenges.isNotEmpty)
                     SliverToBoxAdapter(
                       child: _SectionCard(
@@ -228,20 +283,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '$_weekCompletedDays de $_weekDaysSoFar días completados',
-                                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                                  ),
+                                  Text('$_weekCompletedDays de $_weekDaysSoFar días completados',
+                                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
                                   const SizedBox(height: 12),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: List.generate(7, (i) {
-                                      final status = _weekDayStatuses[i];
-                                      return _DayBubble(
-                                        label: _weekLetters[i],
-                                        status: status,
-                                      );
-                                    }),
+                                    children: List.generate(7, (i) => _DayBubble(
+                                      label: _weekLetters[i],
+                                      status: _weekDayStatuses[i],
+                                    )),
                                   ),
                                 ],
                               ),
@@ -251,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                  // ── Sección Hoy ─────────────────────────────────
+                  // ── Sección Hoy ───────────────────────────────────────
                   if (_challenges.isNotEmpty)
                     SliverToBoxAdapter(
                       child: _SectionCard(
@@ -260,8 +310,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _DonutChart(
-                              completed: _todayCompleted,
-                              total: _challenges.length,
+                              completed: _completedSlots,
+                              total: _totalSlots,
                               color: const Color(0xFF3B82F6),
                             ),
                             const SizedBox(width: 20),
@@ -269,19 +319,18 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '$_todayCompleted de ${_challenges.length} retos completados',
-                                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                                  ),
+                                  Text('$_completedSlots de $_totalSlots completados',
+                                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
                                   const SizedBox(height: 12),
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
-                                    children: _challenges.map((c) {
-                                      final done = _todayProgress[c.id]?.completed == true;
+                                    children: slots.map((sl) {
+                                      final done = _todayProgress[sl.progressKey]?.completed == true;
                                       return _ChallengeBubble(
-                                        challenge: c,
+                                        challenge: sl.challenge,
                                         completed: done,
+                                        slotTime: sl.isRecurring ? sl.time : null,
                                       );
                                     }).toList(),
                                   ),
@@ -293,6 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
+                  // ── Sin retos ─────────────────────────────────────────
                   if (_challenges.isEmpty)
                     SliverFillRemaining(
                       child: Center(
@@ -303,26 +353,37 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: 16),
                             const Text('No tenés retos activos.', style: TextStyle(color: Colors.white, fontSize: 18)),
                             const SizedBox(height: 8),
-                            Text('Andá a la pestaña Retos y creá uno.', style: TextStyle(color: Colors.grey[500])),
+                            Text('Andá a la pestaña Retos y creá uno.',
+                                style: TextStyle(color: Colors.grey[500])),
                           ],
                         ),
                       ),
                     )
-                  else
+                  else ...[
+                    // ── Lista de slots ordenada por hora ─────────────────
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                        child: Text('Retos del día',
+                            style: TextStyle(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, i) {
-                          final challenge = _challenges[i];
+                          final sl = slots[i];
                           return ChallengeCard(
-                            challenge: challenge,
-                            entry: _todayProgress[challenge.id],
-                            onComplete: () => _complete(challenge),
-                            onPostpone: () => _postpone(challenge),
+                            challenge: sl.challenge,
+                            entry: _todayProgress[sl.progressKey],
+                            slotTime: sl.isRecurring ? sl.time : null,
+                            onComplete: () => _complete(sl.challenge, sl.progressKey),
+                            onPostpone: () => _postpone(sl.challenge, sl.progressKey),
                           );
                         },
-                        childCount: _challenges.length,
+                        childCount: slots.length,
                       ),
                     ),
+                  ],
 
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 ],
@@ -337,7 +398,6 @@ class _HomeScreenState extends State<HomeScreen> {
 class _SectionCard extends StatelessWidget {
   final String title;
   final Widget child;
-
   const _SectionCard({required this.title, required this.child});
 
   @override
@@ -353,10 +413,7 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
-          ),
+          Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           child,
         ],
@@ -367,31 +424,28 @@ class _SectionCard extends StatelessWidget {
 
 class _DayBubble extends StatelessWidget {
   final String label;
-  final bool? status; // true=done, false=missed, null=no data
-
+  final bool? status;
   const _DayBubble({required this.label, required this.status});
 
   @override
   Widget build(BuildContext context) {
-    final Color bgColor;
+    final Color bg;
     final Widget icon;
-
     if (status == null) {
-      bgColor = Colors.grey[850]!;
+      bg = Colors.grey[850]!;
       icon = Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold));
     } else if (status!) {
-      bgColor = Colors.green[700]!;
+      bg = Colors.green[700]!;
       icon = const Icon(Icons.check, color: Colors.white, size: 14);
     } else {
-      bgColor = Colors.red[900]!;
+      bg = Colors.red[900]!;
       icon = const Icon(Icons.close, color: Colors.white, size: 14);
     }
-
     return Column(
       children: [
         Container(
           width: 30, height: 30,
-          decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
           child: Center(child: icon),
         ),
         const SizedBox(height: 4),
@@ -404,8 +458,8 @@ class _DayBubble extends StatelessWidget {
 class _ChallengeBubble extends StatelessWidget {
   final Challenge challenge;
   final bool completed;
-
-  const _ChallengeBubble({required this.challenge, required this.completed});
+  final String? slotTime;
+  const _ChallengeBubble({required this.challenge, required this.completed, this.slotTime});
 
   @override
   Widget build(BuildContext context) {
@@ -431,7 +485,7 @@ class _ChallengeBubble extends StatelessWidget {
         SizedBox(
           width: 38,
           child: Text(
-            challenge.title.split(' ').first,
+            slotTime ?? challenge.title.split(' ').first,
             style: TextStyle(color: Colors.grey[500], fontSize: 9),
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -446,16 +500,13 @@ class _DonutChart extends StatelessWidget {
   final int completed;
   final int total;
   final Color color;
-
   const _DonutChart({required this.completed, required this.total, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 80, height: 80,
-      child: CustomPaint(
-        painter: _DonutPainter(completed: completed, total: total, color: color),
-      ),
+      child: CustomPaint(painter: _DonutPainter(completed: completed, total: total, color: color)),
     );
   }
 }
@@ -464,55 +515,35 @@ class _DonutPainter extends CustomPainter {
   final int completed;
   final int total;
   final Color color;
-
   _DonutPainter({required this.completed, required this.total, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 3;
-    const innerRatio = 0.58;
-
-    // Background ring
-    final bgPaint = Paint()
-      ..color = Colors.grey[800]!
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, radius, bgPaint);
-
-    // Completed arc
+    canvas.drawCircle(center, radius,
+        Paint()..color = Colors.grey[800]!..style = PaintingStyle.fill);
     if (total > 0 && completed > 0) {
-      final fillPaint = Paint()
-        ..color = color
-        ..style = PaintingStyle.fill;
-      final sweepAngle = 2 * pi * (completed / (total == 0 ? 1 : total));
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         -pi / 2,
-        sweepAngle,
+        2 * pi * (completed / total),
         true,
-        fillPaint,
+        Paint()..color = color..style = PaintingStyle.fill,
       );
     }
-
-    // Inner cutout (donut hole)
-    final holePaint = Paint()
-      ..color = const Color(0xFF1A1A1A)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(center, radius * innerRatio, holePaint);
-
-    // Center text
+    canvas.drawCircle(center, radius * 0.58,
+        Paint()..color = const Color(0xFF1A1A1A)..style = PaintingStyle.fill);
     final text = total == 0 ? '-' : '$completed/$total';
     final tp = TextPainter(
       text: TextSpan(
-        text: text,
-        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-      ),
+          text: text,
+          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy - tp.height / 2));
   }
 
   @override
-  bool shouldRepaint(_DonutPainter old) =>
-      old.completed != completed || old.total != total;
+  bool shouldRepaint(_DonutPainter old) => old.completed != completed || old.total != total;
 }

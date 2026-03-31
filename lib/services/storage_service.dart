@@ -132,8 +132,19 @@ class StorageService {
       if (dayProgress == null) break;
 
       final allCompleted = activeChallenges.every((c) {
-        final entry = dayProgress[c.id];
-        return entry != null && entry.completed;
+        if (c.intervalHours <= 0) {
+          return dayProgress[c.id]?.completed == true;
+        }
+        // Para recurrentes: al menos un slot completado ese día
+        final parts = c.reminderTime.split(':');
+        int hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1]);
+        while (hour < 24) {
+          final t = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+          if (dayProgress['${c.id}:$t']?.completed == true) return true;
+          hour += c.intervalHours;
+        }
+        return false;
       });
 
       if (!allCompleted) break;
