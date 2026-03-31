@@ -29,6 +29,14 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
     const Color(0xFFF97316),
   ];
 
+  static const _intervalOptions = [
+    (label: 'Sin repetición', hours: 0),
+    (label: 'Cada 2 horas', hours: 2),
+    (label: 'Cada 4 horas', hours: 4),
+    (label: 'Cada 6 horas', hours: 6),
+    (label: 'Cada 8 horas', hours: 8),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +65,11 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
     setState(() { _challenges.removeWhere((c) => c.id == challenge.id); });
   }
 
+  String _intervalLabel(int hours) {
+    if (hours <= 0) return '';
+    return ' · cada ${hours}h';
+  }
+
   Future<void> _openForm({Challenge? existing}) async {
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     String selectedEmoji = existing?.emoji ?? '💧';
@@ -67,6 +80,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
             minute: int.parse(existing.reminderTime.split(':')[1]),
           )
         : const TimeOfDay(hour: 8, minute: 0);
+    int selectedInterval = existing?.intervalHours ?? 0;
     bool saving = false;
 
     await showModalBottomSheet(
@@ -167,6 +181,31 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                const Text('Repetir recordatorio', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey[700]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: selectedInterval,
+                      isExpanded: true,
+                      dropdownColor: const Color(0xFF1A1A1A),
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => selectedInterval = val);
+                      },
+                      items: _intervalOptions.map((opt) => DropdownMenuItem(
+                        value: opt.hours,
+                        child: Text(opt.label),
+                      )).toList(),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -182,31 +221,41 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                       setModalState(() => saving = true);
                       final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
 
-                      if (existing == null) {
-                        final challenge = Challenge(
-                          id: const Uuid().v4(),
-                          title: titleCtrl.text.trim(),
-                          emoji: selectedEmoji,
-                          colorValue: selectedColor.value,
-                          reminderTime: timeStr,
-                          active: true,
-                          createdAt: DateTime.now().toIso8601String().split('T')[0],
-                        );
-                        await _storage.addChallenge(challenge);
-                        await _notifications.scheduleDailyNotification(challenge);
-                      } else {
-                        existing.title = titleCtrl.text.trim();
-                        existing.emoji = selectedEmoji;
-                        existing.colorValue = selectedColor.value;
-                        existing.reminderTime = timeStr;
-                        await _storage.updateChallenge(existing);
-                        if (existing.active) {
-                          await _notifications.scheduleDailyNotification(existing);
+                      try {
+                        if (existing == null) {
+                          final challenge = Challenge(
+                            id: const Uuid().v4(),
+                            title: titleCtrl.text.trim(),
+                            emoji: selectedEmoji,
+                            colorValue: selectedColor.value,
+                            reminderTime: timeStr,
+                            intervalHours: selectedInterval,
+                            active: true,
+                            createdAt: DateTime.now().toIso8601String().split('T')[0],
+                          );
+                          await _storage.addChallenge(challenge);
+                          try {
+                            await _notifications.scheduleDailyNotification(challenge);
+                          } catch (_) {}
+                        } else {
+                          existing.title = titleCtrl.text.trim();
+                          existing.emoji = selectedEmoji;
+                          existing.colorValue = selectedColor.value;
+                          existing.reminderTime = timeStr;
+                          existing.intervalHours = selectedInterval;
+                          await _storage.updateChallenge(existing);
+                          if (existing.active) {
+                            try {
+                              await _notifications.scheduleDailyNotification(existing);
+                            } catch (_) {}
+                          }
                         }
-                      }
 
-                      await _load();
-                      if (ctx.mounted) Navigator.pop(ctx);
+                        await _load();
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (_) {
+                        setModalState(() => saving = false);
+                      }
                     },
                     child: saving
                         ? const SizedBox(
@@ -295,7 +344,10 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                         child: ListTile(
                           leading: Text(c.emoji, style: const TextStyle(fontSize: 28)),
                           title: Text(c.title, style: TextStyle(color: c.active ? Colors.white : Colors.grey[500])),
-                          subtitle: Text('⏰ ${c.reminderTime}', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                          subtitle: Text(
+                            '⏰ ${c.reminderTime}${_intervalLabel(c.intervalHours)}',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
