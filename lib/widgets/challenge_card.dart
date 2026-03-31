@@ -5,6 +5,7 @@ import '../models/progress_entry.dart';
 class ChallengeCard extends StatelessWidget {
   final Challenge challenge;
   final ProgressEntry? entry;
+  final String? slotTime; // HH:MM para retos recurrentes
   final VoidCallback onComplete;
   final VoidCallback onPostpone;
 
@@ -12,6 +13,7 @@ class ChallengeCard extends StatelessWidget {
     super.key,
     required this.challenge,
     required this.entry,
+    this.slotTime,
     required this.onComplete,
     required this.onPostpone,
   });
@@ -40,14 +42,28 @@ class ChallengeCard extends StatelessWidget {
                 Text(challenge.emoji, style: const TextStyle(fontSize: 28)),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    challenge.title,
-                    style: TextStyle(
-                      color: isCompleted ? Colors.grey[400] : Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      decoration: isCompleted ? TextDecoration.lineThrough : null,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (slotTime != null)
+                        Text(
+                          slotTime!,
+                          style: TextStyle(
+                            color: isCompleted ? Colors.grey[600] : Colors.grey[400],
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      Text(
+                        challenge.title,
+                        style: TextStyle(
+                          color: isCompleted ? Colors.grey[400] : Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          decoration: isCompleted ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (isCompleted)
