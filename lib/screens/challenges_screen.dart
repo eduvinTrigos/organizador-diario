@@ -67,6 +67,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
             minute: int.parse(existing.reminderTime.split(':')[1]),
           )
         : const TimeOfDay(hour: 8, minute: 0);
+    bool saving = false;
 
     await showModalBottomSheet(
       context: context,
@@ -176,8 +177,9 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    onPressed: () async {
+                    onPressed: saving ? null : () async {
                       if (titleCtrl.text.trim().isEmpty) return;
+                      setModalState(() => saving = true);
                       final timeStr = '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
 
                       if (existing == null) {
@@ -206,8 +208,13 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                       await _load();
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
-                    child: Text(existing == null ? 'CREAR RETO' : 'GUARDAR CAMBIOS',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: saving
+                        ? const SizedBox(
+                            height: 20, width: 20,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : Text(existing == null ? 'CREAR RETO' : 'GUARDAR CAMBIOS',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -295,6 +302,24 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                               IconButton(
                                 icon: const Icon(Icons.edit_outlined, color: Colors.grey, size: 20),
                                 onPressed: () => _openForm(existing: c),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete_outline, color: Colors.red[400], size: 20),
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (_) => AlertDialog(
+                                      backgroundColor: const Color(0xFF1A1A1A),
+                                      title: const Text('Eliminar reto', style: TextStyle(color: Colors.white)),
+                                      content: Text('¿Seguro que querés eliminar "${c.title}"?', style: const TextStyle(color: Colors.grey)),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
+                                        TextButton(onPressed: () => Navigator.pop(context, true), child: Text('ELIMINAR', style: TextStyle(color: Colors.red[400]))),
+                                      ],
+                                    ),
+                                  ) ?? false;
+                                  if (confirm) _delete(c);
+                                },
                               ),
                               Switch(
                                 value: c.active,
