@@ -1,0 +1,23 @@
+name: motivador_app
+description: "Motivador Personal - App de retos diarios con mensajes brutales."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  go_router: ^13.0.0
+  shared_preferences: ^2.2.2
+  flutter_local_notifications: ^17.0.0
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
