@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
 import '../models/challenge.dart';
 
 class NotificationService {
@@ -7,6 +8,9 @@ class NotificationService {
   NotificationService._internal();
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+
+  // Each challenge can have up to this many notification slots (for recurring)
+  static const _maxSlots = 15;
 
   Future<void> init() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -27,19 +31,33 @@ class NotificationService {
     final hour = int.parse(parts[0]);
     final minute = int.parse(parts[1]);
 
-    final now = DateTime.now();
-    DateTime scheduledDate = DateTime(now.year, now.month, now.day, hour, minute);
-    if (scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
+    final baseId = _idFromChallengeId(challenge.id);
 
-    final notifId = _idFromChallengeId(challenge.id);
+    if (challenge.intervalHours <= 0) {
+      await _scheduleSlot(challenge, baseId, hour, minute);
+    } else {
+      int slot = 0;
+      int h = hour;
+      while (h < 24) {
+        await _scheduleSlot(challenge, baseId + slot, h, minute);
+        slot++;
+        h += challenge.intervalHours;
+      }
+    }
+  }
+
+  Future<void> _scheduleSlot(Challenge challenge, int notifId, int hour, int minute) async {
+    final now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
 
     await _plugin.zonedSchedule(
       notifId,
       '${challenge.emoji} ${challenge.title}',
       '¿Lo vas a hacer o seguís siendo el mismo de siempre?',
-      _toTZDateTime(scheduledDate),
+      scheduled,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'daily_challenges',
@@ -56,16 +74,16 @@ class NotificationService {
   }
 
   Future<void> schedulePostponeNotification(Challenge challenge) async {
-    final postponeId = _idFromChallengeId(challenge.id) + 10000;
+    final postponeId = _idFromChallengeId(challenge.id) + 50000;
     await _plugin.cancel(postponeId);
 
-    final scheduledDate = DateTime.now().add(const Duration(hours: 2));
+    final scheduled = tz.TZDateTime.now(tz.local).add(const Duration(hours: 2));
 
     await _plugin.zonedSchedule(
       postponeId,
       '${challenge.emoji} Todavía está pendiente...',
       'Lo postergaste. Seguís igual. ${challenge.title}.',
-      _toTZDateTime(scheduledDate),
+      scheduled,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'postpone_reminders',
@@ -81,7 +99,10 @@ class NotificationService {
   }
 
   Future<void> cancelNotification(String challengeId) async {
-    await _plugin.cancel(_idFromChallengeId(challengeId));
+    final baseId = _idFromChallengeId(challengeId);
+    for (int i = 0; i < _maxSlots; i++) {
+      await _plugin.cancel(baseId + i);
+    }
   }
 
   Future<void> cancelAll() async {
@@ -89,9 +110,6 @@ class NotificationService {
   }
 
   int _idFromChallengeId(String id) {
-    return id.hashCode.abs() % 100000;
+    return id.hashCode.abs() % 10000;
   }
-
-  // ignore: deprecated_member_use
-  dynamic _toTZDateTime(DateTime dt) => dt;
 }

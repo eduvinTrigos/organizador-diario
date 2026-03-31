@@ -4,6 +4,7 @@ class Challenge {
   String emoji;
   int colorValue;
   String reminderTime;
+  int intervalHours; // 0 = single daily, 2/4/6/8 = repeat every N hours
   bool active;
   String createdAt;
 
@@ -13,6 +14,7 @@ class Challenge {
     required this.emoji,
     required this.colorValue,
     required this.reminderTime,
+    this.intervalHours = 0,
     required this.active,
     required this.createdAt,
   });
@@ -23,6 +25,7 @@ class Challenge {
         'emoji': emoji,
         'colorValue': colorValue,
         'reminderTime': reminderTime,
+        'intervalHours': intervalHours,
         'active': active,
         'createdAt': createdAt,
       };
@@ -33,6 +36,7 @@ class Challenge {
         emoji: json['emoji'] as String,
         colorValue: json['colorValue'] as int,
         reminderTime: json['reminderTime'] as String,
+        intervalHours: (json['intervalHours'] as int?) ?? 0,
         active: json['active'] as bool,
         createdAt: json['createdAt'] as String,
       );

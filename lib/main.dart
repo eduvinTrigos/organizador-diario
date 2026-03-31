@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/timezone.dart' as tz_lib;
 import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/calendar_screen.dart';
@@ -8,6 +11,11 @@ import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  tz.initializeTimeZones();
+  try {
+    final String timeZone = await FlutterTimezone.getLocalTimezone();
+    tz_lib.setLocalLocation(tz_lib.getLocation(timeZone));
+  } catch (_) {}
   await NotificationService().init();
   await NotificationService().requestPermissions();
   runApp(const MotivadorApp());
