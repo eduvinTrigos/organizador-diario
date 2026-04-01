@@ -16,6 +16,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   int _streak = 0;
   bool _loading = true;
+  bool _permNotifications = false;
+  bool _permExactAlarms = false;
 
   @override
   void initState() {
@@ -25,11 +27,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final settings = await _storage.getSettings();
+    final perms = await _notifications.permissionStatus();
     setState(() {
       _notificationsEnabled = settings['notificationsEnabled'] as bool? ?? true;
       _streak = settings['streakDays'] as int? ?? 0;
+      _permNotifications = perms.notifications;
+      _permExactAlarms = perms.exactAlarms;
       _loading = false;
     });
+  }
+
+  Future<void> _fixPermissions() async {
+    await _notifications.requestPermissions();
+    await _load();
+  }
+
+  Future<void> _rescheduleAll() async {
+    final challenges = await _storage.getChallenges();
+    await _notifications.rescheduleAll(challenges.where((c) => c.active).toList());
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Notificaciones re-programadas correctamente.'),
+          backgroundColor: Color(0xFF16A34A),
+        ),
+      );
+    }
   }
 
   Future<void> _toggleNotifications(bool value) async {
@@ -116,16 +139,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                // Permisos del sistema
+                if (!_permNotifications || !_permExactAlarms) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red[900]!.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red[800]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
+                            SizedBox(width: 8),
+                            Text('Permisos faltantes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (!_permNotifications)
+                          Text('✗ Notificaciones: NO permitidas', style: TextStyle(color: Colors.red[300], fontSize: 13)),
+                        if (!_permExactAlarms)
+                          Text('✗ Alarmas exactas: NO permitidas', style: TextStyle(color: Colors.red[300], fontSize: 13)),
+                        if (!_permExactAlarms)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'En Android 12+: Ajustes del cel → Apps → esta app → Alarmas y recordatorios → Activar',
+                              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _fixPermissions,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange[800],
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            child: const Text('CORREGIR PERMISOS'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 // Notificaciones
                 _settingsTile(
                   icon: Icons.notifications_outlined,
                   title: 'Notificaciones',
-                  subtitle: 'Recordatorios diarios de tus retos',
+                  subtitle: _permNotifications && _permExactAlarms
+                      ? 'Recordatorios diarios activos'
+                      : 'Permisos incompletos — ver arriba',
                   trailing: Switch(
                     value: _notificationsEnabled,
                     onChanged: _toggleNotifications,
                     activeColor: const Color(0xFF16A34A),
                   ),
+                ),
+                const SizedBox(height: 12),
+                // Re-programar notificaciones
+                _settingsTile(
+                  icon: Icons.alarm_add_outlined,
+                  title: 'Re-programar notificaciones',
+                  subtitle: 'Usá esto si no recibís avisos de tus retos',
+                  trailing: IconButton(
+                    icon: Icon(Icons.arrow_forward_ios, color: Colors.grey[600], size: 18),
+                    onPressed: _rescheduleAll,
+                  ),
+                  onTap: _rescheduleAll,
                 ),
                 const SizedBox(height: 12),
                 // Reset hoy

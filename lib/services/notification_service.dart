@@ -22,6 +22,27 @@ class NotificationService {
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.requestNotificationsPermission();
+    // Android 12+ (API 31+): SCHEDULE_EXACT_ALARM requires explicit user grant
+    // This opens the system "Alarms & Reminders" settings page if not granted
+    final canExact = await androidPlugin?.canScheduleExactNotifications();
+    if (canExact == false) {
+      await androidPlugin?.requestExactAlarmsPermission();
+    }
+  }
+
+  Future<({bool notifications, bool exactAlarms})> permissionStatus() async {
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    final notif = await androidPlugin?.areNotificationsEnabled() ?? false;
+    final exact = await androidPlugin?.canScheduleExactNotifications() ?? false;
+    return (notifications: notif, exactAlarms: exact);
+  }
+
+  Future<void> rescheduleAll(List<Challenge> activeChallenges) async {
+    await _plugin.cancelAll();
+    for (final c in activeChallenges) {
+      await scheduleDailyNotification(c);
+    }
   }
 
   Future<void> scheduleDailyNotification(Challenge challenge) async {
