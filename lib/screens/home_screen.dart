@@ -270,7 +270,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (_challenges.isNotEmpty)
                     SliverToBoxAdapter(
                       child: _SectionCard(
-                        title: 'Semana',
                         child: Row(
                           children: [
                             _DonutChart(
@@ -283,8 +282,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('$_weekCompletedDays de $_weekDaysSoFar días completados',
-                                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                                  Row(
+                                    children: [
+                                      const Text('Semana',
+                                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                                      const SizedBox(width: 6),
+                                      Text('· $_weekCompletedDays de $_weekDaysSoFar días',
+                                          style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                                    ],
+                                  ),
                                   const SizedBox(height: 12),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -305,7 +311,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (_challenges.isNotEmpty)
                     SliverToBoxAdapter(
                       child: _SectionCard(
-                        title: 'Hoy',
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -319,8 +324,15 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('$_completedSlots de $_totalSlots completados',
-                                      style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                                  Row(
+                                    children: [
+                                      const Text('Hoy',
+                                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                                      const SizedBox(width: 6),
+                                      Text('· $_completedSlots de $_totalSlots completados',
+                                          style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+                                    ],
+                                  ),
                                   const SizedBox(height: 12),
                                   Wrap(
                                     spacing: 8,
@@ -396,9 +408,8 @@ class _HomeScreenState extends State<HomeScreen> {
 // ── Widgets privados ─────────────────────────────────────────────────────────
 
 class _SectionCard extends StatelessWidget {
-  final String title;
   final Widget child;
-  const _SectionCard({required this.title, required this.child});
+  const _SectionCard({required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -410,14 +421,7 @@ class _SectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
+      child: child,
     );
   }
 }

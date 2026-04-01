@@ -33,85 +33,60 @@ class ChallengeCard extends StatelessWidget {
         border: Border.all(color: borderColor, width: 1.5),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Text(challenge.emoji, style: const TextStyle(fontSize: 28)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (slotTime != null)
-                        Text(
-                          slotTime!,
-                          style: TextStyle(
-                            color: isCompleted ? Colors.grey[600] : Colors.grey[400],
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      Text(
-                        challenge.title,
-                        style: TextStyle(
-                          color: isCompleted ? Colors.grey[400] : Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          decoration: isCompleted ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (isCompleted)
-                  const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 28),
-              ],
-            ),
-            if (postponedCount > 0 && !isCompleted) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Postergado $postponedCount ${postponedCount == 1 ? 'vez' : 'veces'} hoy',
-                style: TextStyle(
-                  color: postponedCount >= 3 ? Colors.red[400] : Colors.orange[400],
-                  fontSize: 12,
-                ),
-              ),
-            ],
-            if (!isCompleted) ...[
-              const SizedBox(height: 12),
-              Row(
+            Text(challenge.emoji, style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: onComplete,
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('COMPLETAR'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF16A34A),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  if (slotTime != null)
+                    Text(
+                      slotTime!,
+                      style: TextStyle(
+                        color: isCompleted ? Colors.grey[600] : Colors.grey[400],
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onPostpone,
-                      icon: const Icon(Icons.schedule, size: 18),
-                      label: const Text('POSTERGAR'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.orange[400],
-                        side: BorderSide(color: Colors.orange[400]!),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
+                  Text(
+                    challenge.title,
+                    style: TextStyle(
+                      color: isCompleted ? Colors.grey[400] : Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      decoration: isCompleted ? TextDecoration.lineThrough : null,
                     ),
                   ),
+                  if (postponedCount > 0 && !isCompleted)
+                    Text(
+                      'Postergado $postponedCount ${postponedCount == 1 ? 'vez' : 'veces'}',
+                      style: TextStyle(
+                        color: postponedCount >= 3 ? Colors.red[400] : Colors.orange[400],
+                        fontSize: 11,
+                      ),
+                    ),
                 ],
+              ),
+            ),
+            if (isCompleted)
+              const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 26)
+            else ...[
+              IconButton(
+                onPressed: onComplete,
+                icon: const Icon(Icons.check_circle_outline, color: Color(0xFF16A34A), size: 28),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                tooltip: 'Completar',
+              ),
+              IconButton(
+                onPressed: onPostpone,
+                icon: Icon(Icons.schedule, color: Colors.orange[400], size: 26),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                tooltip: 'Postergar',
               ),
             ],
           ],
